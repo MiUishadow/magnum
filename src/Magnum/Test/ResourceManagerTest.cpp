@@ -45,6 +45,8 @@ struct ResourceManagerTest: TestSuite::Tester {
     void clear();
     void clearWhileReferenced();
     void loader();
+
+    void debugResourceState();
 };
 
 struct Data {
@@ -69,7 +71,9 @@ ResourceManagerTest::ResourceManagerTest() {
               &ResourceManagerTest::defaults,
               &ResourceManagerTest::clear,
               &ResourceManagerTest::clearWhileReferenced,
-              &ResourceManagerTest::loader});
+              &ResourceManagerTest::loader,
+
+              &ResourceManagerTest::debugResourceState});
 }
 
 void ResourceManagerTest::state() {
@@ -128,7 +132,8 @@ void ResourceManagerTest::stateDisallowed() {
     std::ostringstream out;
     Error redirectError{&out};
 
-    rm.set("data", Data(), ResourceDataState::Loading, ResourcePolicy::Resident);
+    Data d; /* Done this way to prevent memory leak on assertion (yes, the code is bad) */
+    rm.set("data", &d, ResourceDataState::Loading, ResourcePolicy::Resident);
     CORRADE_COMPARE(out.str(), "ResourceManager::set(): data should be null if and only if state is NotFound or Loading\n");
 
     out.str({});
@@ -157,7 +162,8 @@ void ResourceManagerTest::basic() {
     /* Cannot change already final resource */
     std::ostringstream out;
     Error redirectError{&out};
-    rm.set(answerKey, 43, ResourceDataState::Mutable, ResourcePolicy::Resident);
+    int a = 43; /* Done this way to prevent a memory leak on assert (yes, the code is bad) */
+    rm.set(answerKey, &a, ResourceDataState::Mutable, ResourcePolicy::Resident);
     CORRADE_COMPARE(*theAnswer, 42);
     CORRADE_COMPARE(out.str(), "ResourceManager::set(): cannot change already final resource " + answerKey.hexString() + '\n');
 
@@ -259,9 +265,10 @@ void ResourceManagerTest::clearWhileReferenced() {
     Error redirectError{&out};
 
     ResourceManager rm;
-    rm.set("blah", Int());
-    /** @todo this will leak, is there any better solution without hitting
-        assertion in decrementReferenceCount()? */
+    int a{}; /* Done this way to prevent leak on assertion (yes, the code is bad) */
+    rm.set("blah", &a);
+    /** @todo this will leak, is there any better solution without hitting assertion in decrementReferenceCount()? */
+    /** @todo remove the suppression from package/ci/leaksanitizer.conf then */
     new Resource<Int>(rm.get<Int>("blah"));
 
     rm.clear();
@@ -324,6 +331,12 @@ void ResourceManagerTest::loader() {
 
     delete rm;
     CORRADE_COMPARE(Data::count, 0);
+}
+
+void ResourceManagerTest::debugResourceState() {
+    std::ostringstream out;
+    Debug{&out} << ResourceState::Loading << ResourceState(0xbe);
+    CORRADE_COMPARE(out.str(), "ResourceState::Loading ResourceState(0xbe)\n");
 }
 
 }}
